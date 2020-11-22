@@ -6,7 +6,7 @@
 # default is 500kb).
 #
 # Files that have a large compressed size should usually be stored in
-# Git LFS [].
+# Git LFS [2].
 #
 # Based on script from Antony Stubbs [1] and improved with ideas from Peff.
 #
@@ -23,9 +23,17 @@ else
     MIN_SIZE_IN_KB=$1
 fi
 
-# "look -b" is required on some Linux systems
-if look 2>&1 | grep -q .-b ; then
-    look_b=-b
+# Use "look" if it is available, otherwise use "grep" (e.g. on Windows)
+if look >/dev/null 2>&1; then
+    # On Debian the "-b" is available and required to make "look" perform
+    # a binary search (see https://unix.stackexchange.com/a/499312/275508 ).
+    if look 2>&1 | grep -q .-b; then
+        search="look -b"
+    else
+        search=look
+    fi
+else
+    search=grep
 fi
 
 # set the internal field separator to line break,
@@ -40,7 +48,7 @@ OBJECTS=$(
     | sort -nr
 )
 
-TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp/}git-find-large-files.XXXXXX") || exit
+TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/git-find-large-files.XXXXXX") || exit
 trap "rm -rf '$TMP_DIR'" EXIT
 
 git rev-list --all --objects | sort > "$TMP_DIR/objects"
@@ -58,8 +66,8 @@ for OBJ in $OBJECTS; do
     SHA=$(echo $OBJ | cut -f 2 -d ' ')
 
     # find the objects location in the repository tree
-    LOCATION=$(look $look_b $SHA "$TMP_DIR/objects" | sed "s/$SHA //")
-    if look $look_b $SHA "$TMP_DIR/objects.1" >/dev/null; then
+    LOCATION=$($search $SHA "$TMP_DIR/objects" | sed "s/$SHA //")
+    if $search $SHA "$TMP_DIR/objects.1" >/dev/null; then
         # Object is in the head revision
         HEAD="Present"
     elif [ -e $LOCATION ]; then
